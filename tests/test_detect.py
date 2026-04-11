@@ -203,3 +203,83 @@ def test_no_evidence(contract_dir: Path):
 
     alerts = check_contract(contract)
     assert alerts == []
+
+
+# --- group_by variance ---
+
+
+def test_variance_group_by_flags_unstable_group(contract_dir: Path):
+    """group_by should flag only the group with high variance, not others."""
+    contract = Contract.load(contract_dir)
+    _add_detection_rules(contract_dir, [
+        {"type": "variance", "field": "score", "group_by": "question_id", "max_stddev": 0.5, "min_samples": 3, "description": "Per-question variance"},
+    ])
+    # Question A: stable (all 3s)
+    for _ in range(5):
+        log_run(contract=contract, output={"question_id": "Q_A", "score": "3"}, input_summary="Q_A")
+    # Question B: unstable (2, 4, 2, 4, 2)
+    for score in ["2", "4", "2", "4", "2"]:
+        log_run(contract=contract, output={"question_id": "Q_B", "score": score}, input_summary="Q_B")
+
+    alerts = check_contract(contract)
+    assert len(alerts) == 1
+    assert "Q_B" in alerts[0].detail
+    assert "Q_A" not in alerts[0].detail
+
+
+def test_variance_group_by_no_trigger_when_all_stable(contract_dir: Path):
+    """group_by with all stable groups should return no alerts."""
+    contract = Contract.load(contract_dir)
+    _add_detection_rules(contract_dir, [
+        {"type": "variance", "field": "score", "group_by": "question_id", "max_stddev": 0.5, "min_samples": 3, "description": "Per-question variance"},
+    ])
+    for q_id in ["Q_A", "Q_B", "Q_C"]:
+        for _ in range(4):
+            log_run(contract=contract, output={"question_id": q_id, "score": "3"}, input_summary=q_id)
+
+    alerts = check_contract(contract)
+    assert len(alerts) == 0
+
+
+def test_variance_group_by_skips_small_groups(contract_dir: Path):
+    """Groups with fewer than min_samples runs should be skipped."""
+    contract = Contract.load(contract_dir)
+    _add_detection_rules(contract_dir, [
+        {"type": "variance", "field": "score", "group_by": "question_id", "max_stddev": 0.5, "min_samples": 3, "description": "Per-question variance"},
+    ])
+    # Only 2 runs for this question — below min_samples, even though scores vary
+    log_run(contract=contract, output={"question_id": "Q_A", "score": "1"}, input_summary="Q_A")
+    log_run(contract=contract, output={"question_id": "Q_A", "score": "5"}, input_summary="Q_A")
+
+    alerts = check_contract(contract)
+    assert len(alerts) == 0
+
+
+def test_variance_group_by_multiple_alerts(contract_dir: Path):
+    """Multiple unstable groups should each produce their own alert."""
+    contract = Contract.load(contract_dir)
+    _add_detection_rules(contract_dir, [
+        {"type": "variance", "field": "score", "group_by": "question_id", "max_stddev": 0.3, "min_samples": 3, "description": "Per-question variance"},
+    ])
+    for q_id in ["Q_X", "Q_Y"]:
+        for score in ["1", "3", "1"]:
+            log_run(contract=contract, output={"question_id": q_id, "score": score}, input_summary=q_id)
+
+    alerts = check_contract(contract)
+    assert len(alerts) == 2
+    alert_details = " ".join(a.detail for a in alerts)
+    assert "Q_X" in alert_details
+    assert "Q_Y" in alert_details
+
+
+def test_variance_without_group_by_unchanged(contract_dir: Path):
+    """Original ungrouped behavior should be preserved when group_by is not set."""
+    contract = Contract.load(contract_dir)
+    _add_detection_rules(contract_dir, [
+        {"type": "variance", "field": "score", "max_stddev": 0.5, "window": 10, "description": "Global variance"},
+    ])
+    _log_runs_with_scores(contract, ["1", "3", "1", "3", "1"])
+
+    alerts = check_contract(contract)
+    assert len(alerts) == 1
+    assert "group_by" not in alerts[0].detail  # no group_by mention in ungrouped mode

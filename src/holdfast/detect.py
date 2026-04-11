@@ -53,18 +53,22 @@ def check_contract(contract: Contract) -> list[Alert]:
         description = rule.get("description", f"{rule_type} check")
 
         if rule_type == "variance":
-            alert = _check_variance(rule, runs)
+            result = _check_variance(rule, runs)
         elif rule_type == "drift":
-            alert = _check_drift(rule, runs)
+            result = _check_drift(rule, runs)
         elif rule_type == "failure_rate":
-            alert = _check_failure_rate(rule, runs)
+            result = _check_failure_rate(rule, runs)
         else:
             logger.warning("Unknown detection rule type: %s", rule_type)
             continue
 
-        if alert:
-            alert.description = description
-            alerts.append(alert)
+        if isinstance(result, list):
+            for alert in result:
+                alert.description = description
+            alerts.extend(result)
+        elif result:
+            result.description = description
+            alerts.append(result)
 
     return alerts
 
@@ -90,37 +94,80 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
-def _check_variance(rule: dict, runs: list[dict]) -> Alert | None:
-    """Check if a field's values vary too much within a window."""
+def _check_variance(rule: dict, runs: list[dict]) -> Alert | list[Alert] | None:
+    """Check if a field's values vary too much within a window.
+
+    Supports optional group_by to bucket runs by a field (e.g. question_id)
+    and check variance within each bucket instead of globally.
+    """
     field_path = rule.get("field", "")
     max_stddev = rule.get("max_stddev", 1.0)
     window = rule.get("window", len(runs))
+    group_by = rule.get("group_by", "")
+    min_samples = rule.get("min_samples", 2)
 
     recent = runs[-window:]
-    values = []
-    ids = []
+
+    if not group_by:
+        # Ungrouped: original behavior
+        values = []
+        ids = []
+        for run in recent:
+            v = _to_float(_extract_field(run, field_path))
+            if v is not None:
+                values.append(v)
+                ids.append(run["id"])
+
+        if len(values) < min_samples:
+            return None
+
+        stddev = statistics.stdev(values)
+        if stddev <= max_stddev:
+            return None
+
+        return Alert(
+            rule_type="variance",
+            description="",
+            detail=(
+                f"Field '{field_path}' stddev={stddev:.2f} exceeds max={max_stddev} "
+                f"across {len(values)} runs (values: {values})"
+            ),
+            evidence_ids=ids,
+        )
+
+    # Grouped: bucket by group_by field, check each bucket
+    buckets: dict[str, list[tuple[str, float]]] = {}
     for run in recent:
+        group_key = _extract_field(run, group_by)
+        if group_key is None:
+            continue
+        group_key = str(group_key)
         v = _to_float(_extract_field(run, field_path))
         if v is not None:
-            values.append(v)
-            ids.append(run["id"])
+            buckets.setdefault(group_key, []).append((run["id"], v))
 
-    if len(values) < 2:
-        return None
+    alerts = []
+    for group_key, entries in buckets.items():
+        if len(entries) < min_samples:
+            continue
 
-    stddev = statistics.stdev(values)
-    if stddev <= max_stddev:
-        return None
+        values = [v for _, v in entries]
+        ids = [rid for rid, _ in entries]
+        stddev = statistics.stdev(values)
 
-    return Alert(
-        rule_type="variance",
-        description="",
-        detail=(
-            f"Field '{field_path}' stddev={stddev:.2f} exceeds max={max_stddev} "
-            f"across {len(values)} runs (values: {values})"
-        ),
-        evidence_ids=ids,
-    )
+        if stddev > max_stddev:
+            alerts.append(Alert(
+                rule_type="variance",
+                description="",
+                detail=(
+                    f"Field '{field_path}' stddev={stddev:.2f} exceeds max={max_stddev} "
+                    f"for {group_by}={group_key} across {len(values)} runs "
+                    f"(values: {values})"
+                ),
+                evidence_ids=ids,
+            ))
+
+    return alerts if alerts else None
 
 
 def _check_drift(rule: dict, runs: list[dict]) -> Alert | None:

@@ -183,7 +183,7 @@ Set in `contract.yaml` as `evolution_mode`. Graduate when you trust the contract
 
 | Type | What it detects |
 |---|---|
-| `variance` | Field values vary too much within a window |
+| `variance` | Field values vary too much within a window. Optional `group_by` to check per-group (e.g. per question). |
 | `drift` | Field average shifted between baseline and recent windows |
 | `failure_rate` | Too many failed runs in a window |
 
