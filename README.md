@@ -1,19 +1,81 @@
 # Holdfast
 
-**Stable outcomes, smarter prompts.**
+**Governed evolution for LLM and agentic systems.**
 
 The destination is fixed. The route gets better.
 
-Holdfast separates what your downstream systems depend on (frozen) from how you deliver it (evolvable), then uses evidence from real usage to improve the route while guaranteeing the destination doesn't change.
+Holdfast separates what your downstream systems depend on (frozen) from how you deliver it (evolvable), then uses evidence from real runs to improve the route while guaranteeing the destination doesn't change. Built for teams running LLM pipelines, agentic workflows, and prompt-driven systems that need to improve without breaking contracts.
 
-## How it works
+## Built for
 
-1. **Setup** — define a contract: what's frozen (output schemas, formats), what's evolvable (prompts, examples), and what invariants must hold.
-2. **Instrument** — log evidence from your pipeline with `log_run()` or the `@track` decorator (supports sync and async).
-3. **Monitor** — detect drift, variance, and failure patterns across runs.
-4. **Evolve** — propose bounded improvements to evolvable surfaces, backed by evidence. Claude Code (recommended) or programmatic via `propose_evolution()`.
+### Claude Code
 
-Human approval required in `monitor` and `semi-auto` modes. Nothing changes without evidence.
+Use Claude Code the way you already do — build pipelines, iterate on prompts, run agents. Holdfast sits underneath, collecting evidence from real runs and detecting when things drift.
+
+When something needs attention, Claude interprets the accumulated evidence, explains what's happening and why, and proposes a bounded change. You approve before anything changes.
+
+- **Build** — write your pipeline, prompts, and agents with Claude Code as usual
+- **Interpret** — ask Claude to read your evidence, spot failure patterns, explain what's drifting across runs
+- **Evolve** — Claude proposes a targeted fix backed by specific run evidence, you approve, the prompt evolves
+
+**Before:** Your classifier prompt doesn't handle sarcasm. 5 of the last 20 runs fail on ambiguous tone — but you don't know that until something breaks downstream.
+
+**After:** Holdfast detects the pattern. Claude explains the cluster of failures, proposes adding a single instruction for ambiguous inputs, you approve, and the prompt evolves. The frozen output schema is never touched.
+
+### Python pipelines
+
+The Python library instruments your pipeline and collects evidence. Wire `@track` into your functions, and holdfast logs every run, validates against invariants, and detects drift — giving Claude (or your own LLM) the data it needs to propose improvements.
+
+```python
+from holdfast import Contract, track
+
+contract = Contract.load("holdfast/contracts/my-pipeline/")
+
+@track(contract)
+async def classify(item: dict) -> dict:
+    prompt = contract.get_evolvable("prompt")
+    return await your_llm_call(prompt, item)
+
+# Every call logs evidence. Pass/fail determined by invariant validation.
+# Evolution proposals are backed by this accumulated evidence.
+```
+
+For CI or fully automated pipelines, `propose_evolution()` drives evolution programmatically without Claude Code.
+
+## What it looks like
+
+A typical Claude Code session with holdfast:
+
+```
+You: Anything drifting in my classifier contract?
+
+Claude: Looking at 47 runs across the last week.
+
+  3 alerts:
+  - score variance on 'confidence' field (stddev=0.89, threshold 0.5)
+  - failure rate 37% in last 10 runs (threshold 20%)
+  - 5 of 8 failures are missing confidence on ambiguous inputs (sarcasm, irony)
+
+  The failures cluster around tone-ambiguous inputs where the model
+  skips the confidence field entirely. The prompt doesn't mention
+  how to handle ambiguous cases.
+
+You: Propose an evolution.
+
+Claude: Based on runs 005, 006, 008, 012, 014 — all failures on ambiguous tone:
+
+  Proposed change to evolvable/prompt.md:
+  + For ambiguous inputs (sarcasm, irony, mixed signals), always include
+  + a confidence score. Use lower confidence (0.3-0.5) but never omit the field.
+
+  This preserves the frozen output schema (label + confidence required)
+  and targets the specific failure pattern. Want me to apply it?
+
+You: Yes.
+
+Claude: Applied evolution evo-001 (v1 → v2). Previous version snapshotted —
+  rollback to v1 anytime with rollback(contract, to_version=1).
+```
 
 ## Install
 
@@ -21,18 +83,38 @@ Human approval required in `monitor` and `semi-auto` modes. Nothing changes with
 pip install holdfast
 ```
 
-Optionally install the Claude Code skill for interactive evolution:
+Install the Claude Code skill for interactive evolution:
 
 ```bash
-# Personal — available across all projects
+# Via plugin (recommended)
+/plugin add kevintelford/holdfast
+
+# Or manually
 mkdir -p ~/.claude/skills/holdfast
 cp skills/holdfast/SKILL.md ~/.claude/skills/holdfast/SKILL.md
-
-# Or via plugin
-/plugin add kevintelford/holdfast
 ```
 
-## Quick start
+## Quick start — Claude Code
+
+Once you have a contract set up (see [Python API quick start](#quick-start--python-api) for setup), everything is conversational:
+
+**Check for patterns:**
+> "What patterns do you see in my classifier contract?"
+
+**Propose an evolution:**
+> "Evolve the classifier prompt based on the last 20 runs."
+
+**Check drift:**
+> "Anything drifting in the classifier?"
+
+**Review history:**
+> "Show me the evolution history for the classifier."
+
+Claude reads evidence, analyzes patterns, and proposes bounded edits to evolvable surfaces. Frozen surfaces are never touched. You approve before anything changes.
+
+## Quick start — Python API
+
+The Python API handles contract setup, evidence logging, and can drive evolution programmatically for CI/automation.
 
 ### 1. Create a contract
 
@@ -119,15 +201,9 @@ contract = Contract.load("holdfast/contracts/my-pipeline/")
 alerts = check_contract(contract)
 ```
 
-### 4. Evolve
+### 4. Evolve programmatically
 
-**Interactively with Claude Code** (recommended for `monitor` and `semi-auto` modes):
-
-> "Look at the evidence in holdfast/contracts/my-pipeline/ and propose an evolution."
-
-The skill reads evidence, analyzes patterns, and proposes bounded edits to evolvable surfaces. Frozen surfaces are never touched. You approve before anything changes.
-
-**Programmatically** (for `auto` mode or CI pipelines):
+For `auto` mode or CI pipelines where you want evolution without interactive review:
 
 ```python
 from holdfast import Contract, propose_evolution, apply_evolution
