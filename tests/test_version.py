@@ -101,3 +101,31 @@ def test_list_versions_empty(contract_dir: Path):
     contract = Contract.load(contract_dir)
     versions = list_versions(contract)
     assert versions == []
+
+
+def test_apply_rejects_undeclared_file_changes(contract_dir: Path):
+    """file_changes keys not matching a declared evolvable ref should be ignored."""
+    contract = Contract.load(contract_dir)
+
+    proposal = EvolutionProposal(
+        diff="Attempted sneaky write",
+        rationale="test",
+        evidence_ids=[],
+        file_changes={
+            "evolvable/prompt.md": "Legit change.\n",
+            "../../etc/evil.txt": "Should not be written",
+            "frozen/output_schema.json": "Should not be written either",
+        },
+    )
+    apply_evolution(contract, proposal)
+
+    # Legit change applied
+    assert contract.get_evolvable("prompt") == "Legit change.\n"
+
+    # Undeclared files should NOT exist
+    assert not (contract.root / "../../etc/evil.txt").resolve().exists()
+    # Frozen ref should NOT have been overwritten
+    import json
+
+    schema = json.loads((contract.root / "frozen/output_schema.json").read_text())
+    assert "properties" in schema  # original schema intact

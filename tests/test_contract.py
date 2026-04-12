@@ -111,3 +111,49 @@ def test_load_detection_rules(contract_dir: Path):
 def test_load_detection_rules_missing_file(contract_dir: Path):
     contract = Contract.load(contract_dir)
     assert contract.load_detection_rules() == []
+
+
+def test_validate_missing_name(tmp_path: Path):
+    """contract.yaml without 'name' should fail validation."""
+    import yaml
+
+    root = tmp_path / "bad"
+    root.mkdir()
+    with open(root / "contract.yaml", "w") as f:
+        yaml.dump({"version": 1}, f)
+
+    with pytest.raises(ValueError, match="missing required field 'name'"):
+        Contract.load(root)
+
+
+def test_validate_bad_evolvable_ref(tmp_path: Path):
+    """Evolvable ref that's neither string nor dict should fail."""
+    import yaml
+
+    root = tmp_path / "bad"
+    root.mkdir()
+    with open(root / "contract.yaml", "w") as f:
+        yaml.dump({"name": "test", "evolvable": {"prompt": 42}}, f)
+
+    with pytest.raises(ValueError, match="must be a string path or a dict"):
+        Contract.load(root)
+
+
+def test_validate_source_ref_missing_symbol(tmp_path: Path):
+    """Source ref dict without 'symbol' should fail."""
+    import yaml
+
+    root = tmp_path / "bad"
+    root.mkdir()
+    with open(root / "contract.yaml", "w") as f:
+        yaml.dump({"name": "test", "evolvable": {"prompt": {"path": "foo.py"}}}, f)
+
+    with pytest.raises(ValueError, match="must have a 'symbol' field"):
+        Contract.load(root)
+
+
+def test_path_boundary_enforcement(contract_dir: Path):
+    """Refs that escape the contract root via ../ should be rejected."""
+    contract = Contract.load(contract_dir)
+    with pytest.raises(ValueError, match="escapes contract root"):
+        contract.resolve_ref_path("../../etc/passwd")
