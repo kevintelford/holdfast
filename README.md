@@ -6,23 +6,22 @@ The destination is fixed. The route gets better.
 
 Holdfast separates what your downstream systems depend on (frozen) from how you deliver it (evolvable), then uses evidence from real usage to improve the route while guaranteeing the destination doesn't change.
 
-## Two ways to use it
+## How it works
 
-**Python pipelines** — your pipeline logs evidence, holdfast detects drift, Claude Code reviews and proposes improvements. Install both the Python lib and the Claude skill.
+1. **Setup** — define a contract: what's frozen (output schemas, formats), what's evolvable (prompts, examples), and what invariants must hold.
+2. **Instrument** — log evidence from your pipeline with `log_run()` or the `@track` decorator (supports sync and async).
+3. **Monitor** — detect drift, variance, and failure patterns across runs.
+4. **Evolve** — propose bounded improvements to evolvable surfaces, backed by evidence. Claude Code (recommended) or programmatic via `propose_evolution()`.
 
-**Claude Code only** — for evolving CLAUDE.md, coding instructions, skills, and other prompt files. Just install the skill. No Python lib needed.
+Human approval required in `monitor` and `semi-auto` modes. Nothing changes without evidence.
 
 ## Install
-
-**For Python pipelines** (lib + skill):
 
 ```bash
 pip install holdfast
 ```
 
-Plus the Claude Code skill below.
-
-**For Claude Code only** (skill only):
+Optionally install the Claude Code skill for interactive evolution:
 
 ```bash
 # Personal — available across all projects
@@ -33,7 +32,7 @@ cp skills/holdfast/SKILL.md ~/.claude/skills/holdfast/SKILL.md
 /plugin add kevintelford/holdfast
 ```
 
-## Quick start — Python pipeline
+## Quick start
 
 ### 1. Create a contract
 
@@ -65,7 +64,7 @@ evolvable:
   prompt: "evolvable/prompt.md"
 ```
 
-### 2. Log evidence from your pipeline
+### 2. Log evidence
 
 ```python
 from holdfast import Contract, log_run
@@ -94,7 +93,15 @@ def classify(item: dict) -> dict:
 # Each call logs evidence. Pass/fail determined by invariant validation.
 ```
 
-### 3. Check for patterns
+The `@track` decorator also works with async functions:
+
+```python
+@track(contract)
+async def classify(item: dict) -> dict:
+    ...
+```
+
+### 3. Monitor for patterns
 
 ```bash
 python -m holdfast status holdfast/contracts/my-pipeline/
@@ -112,13 +119,15 @@ contract = Contract.load("holdfast/contracts/my-pipeline/")
 alerts = check_contract(contract)
 ```
 
-### 4. Propose and apply an evolution
+### 4. Evolve
 
-In Claude Code with the holdfast skill:
+**Interactively with Claude Code** (recommended for `monitor` and `semi-auto` modes):
 
 > "Look at the evidence in holdfast/contracts/my-pipeline/ and propose an evolution."
 
-Or programmatically with your own LLM:
+The skill reads evidence, analyzes patterns, and proposes bounded edits to evolvable surfaces. Frozen surfaces are never touched. You approve before anything changes.
+
+**Programmatically** (for `auto` mode or CI pipelines):
 
 ```python
 from holdfast import Contract, propose_evolution, apply_evolution
@@ -142,15 +151,41 @@ versions = list_versions(contract)  # [1, 2, 3]
 rollback(contract, to_version=2)
 ```
 
-## Quick start — Claude Code skill
+## Evolvable references
 
-Install the skill, then in any project with a contract:
+Evolvable surfaces can reference standalone files or Python symbols in existing source files.
 
-> "What patterns do you see in my evidence?"
-> "Evolve the prompt based on the last 20 runs."
-> "Check holdfast/contracts/my-pipeline/ for drift."
+### File references (default)
 
-The skill reads evidence, analyzes patterns, and proposes bounded edits to evolvable surfaces. Frozen surfaces are never touched. You approve before anything changes.
+```yaml
+evolvable:
+  prompt: "evolvable/prompt.md"
+```
+
+Reads and writes the entire file.
+
+### Source references (Python symbols)
+
+Point directly at string constants in your source code — no need to extract prompts into separate files:
+
+```yaml
+evolvable:
+  system_prompt:
+    path: "src/pipeline/prompts.py"
+    symbol: "SYSTEM_PROMPT"              # module-level assignment
+
+  maturity_prompt:
+    path: "src/pipeline/prompts.py"
+    symbol: "CyberPrompts.MATURITY_PROMPT"  # class attribute
+```
+
+Supports:
+- **Module-level assignments**: `PROMPT = "..."` — symbol is `"PROMPT"`
+- **Class attributes**: `class Foo: PROMPT = "..."` — symbol is `"Foo.PROMPT"`
+
+Holdfast uses `ast.parse()` for extraction — no code execution. Write-back preserves all surrounding code and original quoting style.
+
+Both formats can be mixed in the same contract. `get_evolvable()` returns the string value regardless of format.
 
 ## Contracts
 
@@ -178,6 +213,8 @@ Set in `contract.yaml` as `evolution_mode`. Graduate when you trust the contract
 | `schema` | JSON Schema validation against a frozen schema file |
 | `contains` | Field value is one of the allowed values (scalar) or contains all required values (list) |
 | `custom` | External Python script — passes output as JSON on stdin, checks exit code |
+
+**Security note on custom scripts:** Custom invariant scripts execute as the current user via `subprocess.run()` with full filesystem access. The only guard is a 30-second timeout. This is fine for local development and CI where you control the scripts. Review any custom scripts before trusting third-party contracts.
 
 ### Detection rule types
 
