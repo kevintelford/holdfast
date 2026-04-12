@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import yaml
+
 from holdfast import (
     Contract,
     apply_evolution,
@@ -12,6 +14,7 @@ from holdfast import (
     rollback,
     validate_output,
 )
+from holdfast.extract import extract_symbol
 
 
 def test_full_lifecycle(contract_dir: Path):
@@ -97,3 +100,106 @@ def test_full_lifecycle(contract_dir: Path):
     rollback(contract, to_version=1)
     assert contract.version == 1
     assert contract.get_evolvable("prompt") == original_prompt
+
+
+def test_source_ref_lifecycle(tmp_path: Path):
+    """End-to-end: source ref → log → propose → apply → verify symbol changed in source file."""
+
+    # Contract root is tmp_path itself — source files live inside it
+    contract_root = tmp_path
+
+    # 1. Create a Python source file with a prompt constant inside contract root
+    src_dir = contract_root / "src"
+    src_dir.mkdir()
+    prompts_py = src_dir / "prompts.py"
+    prompts_py.write_text(
+        'OTHER_SETTING = 42\n'
+        '\n'
+        '\n'
+        'class Prompts:\n'
+        '    SYSTEM_PROMPT = "You are a classifier. Return JSON with label and confidence."\n'
+        '    FALLBACK = "Default fallback response."\n'
+    )
+
+    # 2. Create contract with source ref
+    frozen = contract_root / "frozen"
+    frozen.mkdir()
+    schema = {
+        "type": "object",
+        "properties": {
+            "label": {"type": "string"},
+            "confidence": {"type": "number"},
+        },
+        "required": ["label", "confidence"],
+    }
+    (frozen / "output_schema.json").write_text(json.dumps(schema))
+
+    contract_data = {
+        "name": "source-ref-test",
+        "version": 1,
+        "evolution_mode": "monitor",
+        "frozen": {"output_schema": "frozen/output_schema.json"},
+        "evolvable": {
+            "system_prompt": {
+                "path": "src/prompts.py",
+                "symbol": "Prompts.SYSTEM_PROMPT",
+            },
+        },
+    }
+    with open(contract_root / "contract.yaml", "w") as f:
+        yaml.dump(contract_data, f, default_flow_style=False, sort_keys=False)
+
+    # Empty invariants (schema-only via frozen ref)
+    (contract_root / "invariants.yaml").write_text("[]")
+
+    # Evolvable dir needed for snapshot (can be empty)
+    (contract_root / "evolvable").mkdir()
+
+    # 3. Load and verify extraction
+    contract = Contract.load(contract_root)
+    prompt_value = contract.get_evolvable("system_prompt")
+    assert "classifier" in prompt_value
+
+    # 4. Log some evidence
+    for i in range(6):
+        log_run(
+            contract=contract,
+            output={"label": "positive", "confidence": 0.8 + i * 0.02},
+            input_summary=f"test input {i}",
+            passed=i < 4,
+            notes="" if i < 4 else "missing handling for edge case",
+        )
+
+    # 5. Propose evolution (mock LLM returns source ref change)
+    new_prompt_value = "You are a classifier. Return JSON with label and confidence. Handle edge cases carefully."
+
+    def mock_llm(prompt: str) -> str:
+        return json.dumps({
+            "has_proposal": True,
+            "rationale": "Adding edge case handling based on runs 5-6 failures.",
+            "evidence_ids": ["run-005", "run-006"],
+            "file_changes": {
+                "src/prompts.py::Prompts.SYSTEM_PROMPT": new_prompt_value,
+            },
+            "diff_summary": "Added edge case handling instruction",
+        })
+
+    proposal = propose_evolution(contract=contract, llm=mock_llm, min_runs=5)
+    assert proposal is not None
+
+    # 6. Apply — this should write back to the Python source file
+    apply_evolution(contract, proposal)
+    assert contract.version == 2
+
+    # 7. Verify the symbol was updated in the source file
+    loc = extract_symbol(prompts_py, "Prompts.SYSTEM_PROMPT")
+    assert "edge cases" in loc.value
+
+    # Verify other code in the file is untouched
+    source = prompts_py.read_text()
+    assert "OTHER_SETTING = 42" in source
+    assert 'FALLBACK = "Default fallback response."' in source
+
+    # 8. Verify get_evolvable reads the new value
+    reloaded = Contract.load(contract_root)
+    assert "edge cases" in reloaded.get_evolvable("system_prompt")

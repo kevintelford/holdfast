@@ -7,6 +7,11 @@ A contract is a directory containing:
 - invariants.yaml — checks that must pass before and after evolution
 - detection.yaml — rules for detecting patterns across runs
 - .holdfast/ — managed storage for evidence and version history
+
+Evolvable refs can be:
+- A string path: "evolvable/prompt.md" (reads the whole file)
+- A dict with path + symbol: {path: "src/prompts.py", symbol: "SYSTEM_PROMPT"}
+  (extracts a Python string literal by symbol name)
 """
 
 from __future__ import annotations
@@ -20,6 +25,61 @@ import yaml
 VALID_EVOLUTION_MODES = ("monitor", "semi-auto", "auto")
 
 
+def _validate_contract_data(data: Any, config_path: Path) -> None:
+    """Validate contract.yaml structure at load time."""
+    if not isinstance(data, dict):
+        raise ValueError(f"contract.yaml must be a YAML mapping, got {type(data).__name__} in {config_path}")
+
+    if "name" not in data:
+        raise ValueError(f"contract.yaml missing required field 'name' in {config_path}")
+
+    if not isinstance(data.get("name"), str):
+        raise ValueError(f"contract.yaml 'name' must be a string in {config_path}")
+
+    if "version" in data and not isinstance(data["version"], int):
+        raise ValueError(f"contract.yaml 'version' must be an integer in {config_path}")
+
+    # Validate evolvable ref format
+    for key, val in data.get("evolvable", {}).items():
+        if isinstance(val, str):
+            continue
+        if isinstance(val, dict):
+            if "path" not in val:
+                raise ValueError(f"Evolvable ref '{key}' dict must have a 'path' field in {config_path}")
+            if "symbol" not in val:
+                raise ValueError(f"Evolvable ref '{key}' dict must have a 'symbol' field in {config_path}")
+            if not isinstance(val["path"], str) or not isinstance(val["symbol"], str):
+                raise ValueError(f"Evolvable ref '{key}' path and symbol must be strings in {config_path}")
+        else:
+            raise ValueError(
+                f"Evolvable ref '{key}' must be a string path or a dict with path+symbol, "
+                f"got {type(val).__name__} in {config_path}"
+            )
+
+
+@dataclass
+class EvolvableRef:
+    """A reference to an evolvable surface — either a file or a Python symbol."""
+
+    path: str
+    symbol: str | None = None
+
+    @property
+    def is_source_ref(self) -> bool:
+        return self.symbol is not None
+
+    @classmethod
+    def from_yaml(cls, value: str | dict) -> EvolvableRef:
+        if isinstance(value, str):
+            return cls(path=value)
+        return cls(path=value["path"], symbol=value.get("symbol"))
+
+    def to_yaml(self) -> str | dict:
+        if self.symbol is None:
+            return self.path
+        return {"path": self.path, "symbol": self.symbol}
+
+
 @dataclass
 class Contract:
     """A governed contract with frozen and evolvable surfaces."""
@@ -28,7 +88,7 @@ class Contract:
     version: int
     root: Path
     frozen: dict[str, str] = field(default_factory=dict)
-    evolvable: dict[str, str] = field(default_factory=dict)
+    evolvable: dict[str, EvolvableRef] = field(default_factory=dict)
     interface_notes: str = ""
     evolution_mode: str = "monitor"
 
@@ -44,6 +104,8 @@ class Contract:
         with open(config_path) as f:
             data = yaml.safe_load(f)
 
+        _validate_contract_data(data, config_path)
+
         frozen_refs = data.get("frozen", {})
         # interface_notes is metadata, not a file ref
         interface_notes = frozen_refs.pop("interface_notes", "")
@@ -52,27 +114,47 @@ class Contract:
         if evolution_mode not in VALID_EVOLUTION_MODES:
             raise ValueError(f"Invalid evolution_mode '{evolution_mode}'. Must be one of: {VALID_EVOLUTION_MODES}")
 
+        evolvable_raw = data.get("evolvable", {})
+        evolvable_refs = {k: EvolvableRef.from_yaml(v) for k, v in evolvable_raw.items()}
+
         return cls(
             name=data["name"],
             version=data.get("version", 1),
             root=root,
             frozen=frozen_refs,
-            evolvable=data.get("evolvable", {}),
+            evolvable=evolvable_refs,
             interface_notes=interface_notes,
             evolution_mode=evolution_mode,
         )
 
-    def get_evolvable(self, key: str) -> str:
-        """Read the content of an evolvable file by its key.
+    def resolve_ref_path(self, ref_path: str) -> Path:
+        """Resolve a ref path relative to contract root, enforcing path boundaries.
 
-        For example, contract.get_evolvable("prompt") reads the file
-        referenced by evolvable.prompt in contract.yaml.
+        Raises ValueError if the resolved path escapes the contract root.
+        """
+        resolved = (self.root / ref_path).resolve()
+        if not resolved.is_relative_to(self.root):
+            raise ValueError(f"Path '{ref_path}' escapes contract root {self.root}")
+        return resolved
+
+    def get_evolvable(self, key: str) -> str:
+        """Read the content of an evolvable surface by its key.
+
+        For file refs, reads the whole file.
+        For source refs (path + symbol), extracts the symbol value from the Python file.
         """
         ref = self.evolvable.get(key)
         if ref is None:
             raise KeyError(f"No evolvable surface named '{key}' in contract '{self.name}'")
 
-        path = self.root / ref
+        if ref.is_source_ref:
+            from .extract import extract_symbol
+
+            target = self.resolve_ref_path(ref.path)
+            loc = extract_symbol(target, ref.symbol)
+            return loc.value
+
+        path = self.resolve_ref_path(ref.path)
         if not path.exists():
             raise FileNotFoundError(f"Evolvable file not found: {path}")
 
@@ -84,7 +166,7 @@ class Contract:
         if ref is None:
             raise KeyError(f"No frozen surface named '{key}' in contract '{self.name}'")
 
-        path = self.root / ref
+        path = self.resolve_ref_path(ref)
         if not path.exists():
             raise FileNotFoundError(f"Frozen file not found: {path}")
 
@@ -98,7 +180,11 @@ class Contract:
         return json.loads(content)
 
     def evolvable_dir(self) -> Path:
-        """Return the path to the evolvable/ directory."""
+        """Return the path to the evolvable/ directory.
+
+        Note: with source refs, evolvable content may live outside this directory.
+        This method returns the conventional evolvable/ dir for file-based refs.
+        """
         return self.root / "evolvable"
 
     def storage_dir(self) -> Path:
@@ -123,7 +209,7 @@ class Contract:
             "version": self.version,
             "evolution_mode": self.evolution_mode,
             "frozen": {**self.frozen},
-            "evolvable": dict(self.evolvable),
+            "evolvable": {k: ref.to_yaml() for k, ref in self.evolvable.items()},
         }
         if self.interface_notes:
             data["frozen"]["interface_notes"] = self.interface_notes

@@ -92,9 +92,20 @@ def build_evolution_prompt(contract: Contract, runs: list[dict[str, Any]] | None
     # Gather the current evolvable content
     evolvable_content = {}
     for key, ref in contract.evolvable.items():
-        path = contract.root / ref
-        if path.is_file():
-            evolvable_content[ref] = path.read_text()
+        if ref.is_source_ref:
+            from .extract import extract_symbol
+
+            try:
+                target = contract.resolve_ref_path(ref.path)
+                loc = extract_symbol(target, ref.symbol)
+                label = f"{ref.path}::{ref.symbol}"
+                evolvable_content[label] = loc.value
+            except (ValueError, FileNotFoundError):
+                logger.warning("Could not extract symbol '%s' from %s", ref.symbol, ref.path)
+        else:
+            path = contract.resolve_ref_path(ref.path)
+            if path.is_file():
+                evolvable_content[ref.path] = path.read_text()
 
     # Gather frozen content for context (the LLM needs to know what NOT to change)
     frozen_content = {}
@@ -103,6 +114,12 @@ def build_evolution_prompt(contract: Contract, runs: list[dict[str, Any]] | None
         if path.is_file():
             frozen_content[ref] = path.read_text()
 
+    # Build a mapping of source refs for the prompt, so the LLM knows the format
+    source_refs = {}
+    for key, ref in contract.evolvable.items():
+        if ref.is_source_ref:
+            source_refs[key] = {"path": ref.path, "symbol": ref.symbol}
+
     return _build_evolution_prompt(
         contract_name=contract.name,
         contract_version=contract.version,
@@ -110,6 +127,7 @@ def build_evolution_prompt(contract: Contract, runs: list[dict[str, Any]] | None
         evolvable_content=evolvable_content,
         runs=runs,
         interface_notes=contract.interface_notes,
+        source_refs=source_refs,
     )
 
 
@@ -120,6 +138,7 @@ def _build_evolution_prompt(
     evolvable_content: dict[str, str],
     runs: list[dict[str, Any]],
     interface_notes: str,
+    source_refs: dict[str, dict[str, str]] | None = None,
 ) -> str:
     """Build the LLM prompt for proposing an evolution."""
 
@@ -141,6 +160,17 @@ def _build_evolution_prompt(
     failed_runs = [r for r in runs if not r.get("passed")]
     passed_runs = [r for r in runs if r.get("passed")]
 
+    source_ref_note = ""
+    if source_refs:
+        ref_lines = []
+        for key, info in source_refs.items():
+            ref_lines.append(f"  - {key}: symbol `{info['symbol']}` in `{info['path']}`")
+        source_ref_note = (
+            "\n\nSome evolvable surfaces are Python symbols (string constants in source files).\n"
+            "For these, use the `path::symbol` key in file_changes and provide only the new string value "
+            "(not the assignment or quotes).\n\nSource refs:\n" + "\n".join(ref_lines)
+        )
+
     return f"""You are an evolution engine for a governed prompt system called holdfast.
 
 ## Contract: {contract_name} (v{contract_version})
@@ -153,7 +183,7 @@ def _build_evolution_prompt(
 
 ## Evolvable surfaces (you may propose changes to these ONLY)
 
-{_format_content_block(evolvable_content)}
+{_format_content_block(evolvable_content)}{source_ref_note}
 
 ## Run evidence ({len(runs)} total: {len(passed_runs)} passed, {len(failed_runs)} failed)
 
