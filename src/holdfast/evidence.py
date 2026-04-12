@@ -7,6 +7,7 @@ validation to determine pass/fail automatically.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -78,36 +79,52 @@ def track(contract: Contract) -> Callable:
         # For richer pass/fail logic, use log_run() directly.
     """
 
+    def _log_success(input_summary: str, result: Any) -> Any:
+        validation = validate_output(contract.root, result)
+        notes = ""
+        if not validation.passed:
+            notes = f"Invariant failures: {validation.summary()}"
+        log_run(
+            contract=contract,
+            output=result,
+            input_summary=input_summary,
+            passed=validation.passed,
+            notes=notes,
+        )
+        return result
+
+    def _log_exception(input_summary: str, exc: Exception) -> None:
+        log_run(
+            contract=contract,
+            output={"error": str(exc)},
+            input_summary=input_summary,
+            passed=False,
+            notes=f"Exception: {type(exc).__name__}: {exc}",
+        )
+
     def decorator(fn: Callable) -> Callable:
+        if asyncio.iscoroutinefunction(fn):
+
+            @functools.wraps(fn)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                input_summary = _summarize_args(fn, args, kwargs)
+                try:
+                    result = await fn(*args, **kwargs)
+                    return _log_success(input_summary, result)
+                except Exception as exc:
+                    _log_exception(input_summary, exc)
+                    raise
+
+            return async_wrapper
+
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             input_summary = _summarize_args(fn, args, kwargs)
-
             try:
                 result = fn(*args, **kwargs)
-
-                # Run invariant validation to determine pass/fail
-                validation = validate_output(contract.root, result)
-                notes = ""
-                if not validation.passed:
-                    notes = f"Invariant failures: {validation.summary()}"
-
-                log_run(
-                    contract=contract,
-                    output=result,
-                    input_summary=input_summary,
-                    passed=validation.passed,
-                    notes=notes,
-                )
-                return result
+                return _log_success(input_summary, result)
             except Exception as exc:
-                log_run(
-                    contract=contract,
-                    output={"error": str(exc)},
-                    input_summary=input_summary,
-                    passed=False,
-                    notes=f"Exception: {type(exc).__name__}: {exc}",
-                )
+                _log_exception(input_summary, exc)
                 raise
 
         return wrapper

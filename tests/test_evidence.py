@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from holdfast import Contract, log_run, track
 from holdfast.store import list_evidence
 
@@ -122,3 +124,36 @@ def test_log_run_non_serializable_output(contract_dir: Path):
     evidence = list_evidence(contract.storage_dir())
     assert len(evidence) == 1
     assert isinstance(evidence[0]["output"], str)
+
+
+@pytest.mark.asyncio
+async def test_track_decorator_async(contract_dir: Path):
+    contract = Contract.load(contract_dir)
+
+    @track(contract)
+    async def classify(item: dict) -> dict:
+        return {"label": "positive", "confidence": 0.9}
+
+    result = await classify({"text": "great"})
+    assert result["label"] == "positive"
+
+    evidence = list_evidence(contract.storage_dir())
+    assert len(evidence) == 1
+    assert evidence[0]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_track_decorator_async_exception(contract_dir: Path):
+    contract = Contract.load(contract_dir)
+
+    @track(contract)
+    async def failing_classify(item: dict) -> dict:
+        raise ValueError("async broke")
+
+    with pytest.raises(ValueError, match="async broke"):
+        await failing_classify({"text": "test"})
+
+    evidence = list_evidence(contract.storage_dir())
+    assert len(evidence) == 1
+    assert evidence[0]["passed"] is False
+    assert "ValueError" in evidence[0]["notes"]
