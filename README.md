@@ -1,6 +1,10 @@
-# Holdfast
+<p align="center">
+  <img src="assets/logo.png" alt="Holdfast" width="200">
+</p>
 
-**Governed evolution for LLM and agentic systems.**
+<h1 align="center">Holdfast</h1>
+
+<p align="center"><strong>Governed evolution for LLM and agentic systems.</strong></p>
 
 The destination is fixed. The route gets better.
 
