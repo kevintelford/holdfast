@@ -16,7 +16,7 @@ def test_log_run_basic(contract_dir: Path):
         input_summary="test input 1",
         passed=True,
     )
-    assert run_id == "run-001"
+    assert run_id == "run-00001"
 
     # Verify evidence file exists
     evidence = list_evidence(contract.storage_dir(), contract_name="test-classifier")
@@ -30,9 +30,9 @@ def test_log_run_sequential_ids(contract_dir: Path):
     id1 = log_run(contract=contract, output={"label": "positive", "confidence": 0.8})
     id2 = log_run(contract=contract, output={"label": "negative", "confidence": 0.6})
     id3 = log_run(contract=contract, output={"label": "neutral", "confidence": 0.5})
-    assert id1 == "run-001"
-    assert id2 == "run-002"
-    assert id3 == "run-003"
+    assert id1 == "run-00001"
+    assert id2 == "run-00002"
+    assert id3 == "run-00003"
 
 
 def test_log_run_with_failure(contract_dir: Path):

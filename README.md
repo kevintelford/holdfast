@@ -304,6 +304,25 @@ See [Security considerations](#security-considerations) for custom script trust 
 | `drift` | Field average shifted between baseline and recent windows |
 | `failure_rate` | Too many failed runs in a window |
 
+Detection rules operate on a sliding window of recent evidence. Runs outside the window are ignored — they're not deleted, just not considered for detection. If you have 500 runs and a `window: 100`, only the most recent 100 runs are checked. Baseline windows (for drift) work the same way, looking at an earlier slice.
+
+### Contract patterns
+
+For projects with multiple pipelines or variants, organize contracts by use case:
+
+```
+holdfast/
+  contracts/
+    classifier/
+      en/             # English language classifier
+      es/             # Spanish language classifier
+    summarizer/
+      short-form/     # Tweet-length summaries
+      long-form/      # Executive summaries
+```
+
+Each contract gets its own evidence pool and detection rules. If multiple contracts share the same frozen schema and invariants, duplicate the files — contract inheritance is not yet supported.
+
 ## Storage
 
 Everything is flat files in `.holdfast/` inside each contract directory:

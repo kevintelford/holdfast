@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0 — 2026-04-15
+
+### Run ID limit fix
+
+Run and evolution IDs now use 5-digit zero-padded format (`run-00001` instead of `run-001`). The previous 3-digit format capped at 999 runs per contract — production usage was already hitting 500+. The new `_max_seq_id()` helper correctly handles mixed-width IDs from existing evidence directories, so no migration is needed.
+
+### Documentation
+
+- **Detection windows**: Clarified how sliding windows work — runs outside the window are ignored, not deleted
+- **Contract patterns**: Added recommended directory structure for multi-pipeline/variant projects
+
 ## v0.2.1 — 2026-04-15
 
 ### project_root for source refs outside contract directory

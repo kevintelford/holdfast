@@ -121,26 +121,30 @@ def list_evolutions(storage_root: Path) -> list[dict[str, Any]]:
     return sorted(evos, key=lambda e: e.get("timestamp", ""))
 
 
+def _max_seq_id(directory: Path, prefix: str) -> int:
+    """Find the highest sequential ID number for a given prefix (e.g. 'run', 'evo')."""
+    max_num = 0
+    for p in directory.glob(f"{prefix}-*.json"):
+        try:
+            num = int(p.stem.split("-", 1)[1])
+            max_num = max(max_num, num)
+        except (ValueError, IndexError):
+            continue
+    return max_num
+
+
 def next_run_id(storage_root: Path) -> str:
     """Generate the next sequential run ID."""
     d = evidence_dir(storage_root)
-    existing = sorted(d.glob("run-*.json"))
-    if not existing:
-        return "run-001"
-    last = existing[-1].stem  # e.g. "run-042"
-    num = int(last.split("-")[1]) + 1
-    return f"run-{num:03d}"
+    num = _max_seq_id(d, "run") + 1
+    return f"run-{num:05d}"
 
 
 def next_evolution_id(storage_root: Path) -> str:
     """Generate the next sequential evolution ID."""
     d = versions_dir(storage_root)
-    existing = sorted(d.glob("evo-*.json"))
-    if not existing:
-        return "evo-001"
-    last = existing[-1].stem
-    num = int(last.split("-")[1]) + 1
-    return f"evo-{num:03d}"
+    num = _max_seq_id(d, "evo") + 1
+    return f"evo-{num:05d}"
 
 
 def now_iso() -> str:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "holdfast"
-version = "0.2.1"
+version = "0.3.0"
 description = "Governed evolution for prompts and skills — learn from runs, propose bounded improvements, stay within contracts."
 readme = "README.md"
 license = "MIT"

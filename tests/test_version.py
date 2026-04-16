@@ -21,7 +21,7 @@ def test_apply_evolution(contract_dir: Path):
     )
 
     evo_id = apply_evolution(contract, proposal)
-    assert evo_id == "evo-001"
+    assert evo_id == "evo-00001"
     assert contract.version == 2
 
     # Verify the prompt was updated
