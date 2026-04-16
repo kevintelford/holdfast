@@ -10,7 +10,7 @@ The destination is fixed. The route gets better.
 
 Holdfast separates what your downstream systems depend on (frozen) from how you deliver it (evolvable), then uses evidence from real runs to improve the route while guaranteeing the destination doesn't change. Built for teams running LLM pipelines, agentic workflows, and prompt-driven systems that need to improve without breaking contracts.
 
-## Built for
+## Built for Claude Code & Python pipelines
 
 ### Claude Code
 
