@@ -91,6 +91,7 @@ class Contract:
     evolvable: dict[str, EvolvableRef] = field(default_factory=dict)
     interface_notes: str = ""
     evolution_mode: str = "monitor"
+    project_root: Path | None = None
 
     @classmethod
     def load(cls, path: str | Path) -> Contract:
@@ -117,6 +118,16 @@ class Contract:
         evolvable_raw = data.get("evolvable", {})
         evolvable_refs = {k: EvolvableRef.from_yaml(v) for k, v in evolvable_raw.items()}
 
+        # project_root: optional, resolved relative to contract root, must be an ancestor
+        project_root = None
+        if "project_root" in data:
+            project_root = (root / data["project_root"]).resolve()
+            if not root.is_relative_to(project_root):
+                raise ValueError(
+                    f"project_root '{data['project_root']}' (resolves to {project_root}) "
+                    f"is not an ancestor of contract root {root}"
+                )
+
         return cls(
             name=data["name"],
             version=data.get("version", 1),
@@ -125,16 +136,24 @@ class Contract:
             evolvable=evolvable_refs,
             interface_notes=interface_notes,
             evolution_mode=evolution_mode,
+            project_root=project_root,
         )
 
-    def resolve_ref_path(self, ref_path: str) -> Path:
-        """Resolve a ref path relative to contract root, enforcing path boundaries.
+    @property
+    def path_boundary(self) -> Path:
+        """The boundary for path resolution — project_root if set, otherwise contract root."""
+        return self.project_root if self.project_root is not None else self.root
 
-        Raises ValueError if the resolved path escapes the contract root.
+    def resolve_ref_path(self, ref_path: str) -> Path:
+        """Resolve a ref path, enforcing path boundaries.
+
+        Paths are resolved relative to project_root (if set) or contract root.
+        Raises ValueError if the resolved path escapes the boundary.
         """
-        resolved = (self.root / ref_path).resolve()
-        if not resolved.is_relative_to(self.root):
-            raise ValueError(f"Path '{ref_path}' escapes contract root {self.root}")
+        base = self.path_boundary
+        resolved = (base / ref_path).resolve()
+        if not resolved.is_relative_to(base):
+            raise ValueError(f"Path '{ref_path}' escapes path boundary {base}")
         return resolved
 
     def get_evolvable(self, key: str) -> str:
@@ -211,6 +230,15 @@ class Contract:
             "frozen": {**self.frozen},
             "evolvable": {k: ref.to_yaml() for k, ref in self.evolvable.items()},
         }
+        if self.project_root is not None:
+            # Store as relative path from contract root
+            try:
+                data["project_root"] = str(self.project_root.relative_to(self.root))
+            except ValueError:
+                # project_root is an ancestor, so use os.path.relpath
+                import os
+
+                data["project_root"] = os.path.relpath(self.project_root, self.root)
         if self.interface_notes:
             data["frozen"]["interface_notes"] = self.interface_notes
 

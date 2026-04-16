@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.2.1 — 2026-04-15
+
+### project_root for source refs outside contract directory
+
+Source refs can now point at files outside the contract directory by setting `project_root` in `contract.yaml`. The security boundary widens from contract root to project root — paths must still stay within the boundary.
+
+```yaml
+project_root: "../.."    # resolved relative to contract dir, must be an ancestor
+evolvable:
+  system_prompt:
+    path: "src/pipeline/prompts.py"
+    symbol: "CyberPrompts.SYSTEM_PROMPT"
+```
+
+### Security fixes
+
+- Invariant script and schema ref paths now validated against contract root boundary (previously unchecked — could traverse via `../`)
+- New "Security considerations" section in README covering: custom scripts, evidence data sensitivity, auto mode risks, prompt injection via evidence
+
+### Adversarial path traversal tests
+
+Added tests for direct traversal, nested traversal, absolute path injection, null bytes, URL-encoded traversal, and symlink escape attempts.
+
 ## v0.2.0 — 2026-04-12
 
 ### Evolvable source references

@@ -92,10 +92,26 @@ def validate_output(contract_root: Path, output: Any) -> ValidationResult:
     return ValidationResult(passed=all_passed, results=results)
 
 
+def _resolve_invariant_path(contract_root: Path, ref: str) -> Path:
+    """Resolve an invariant file path, enforcing it stays within contract root."""
+    resolved = (contract_root / ref).resolve()
+    if not resolved.is_relative_to(contract_root.resolve()):
+        raise ValueError(f"Invariant path '{ref}' escapes contract root {contract_root}")
+    return resolved
+
+
 def _check_schema(contract_root: Path, inv: dict, output: Any) -> InvariantResult:
     """Validate output against a JSON Schema."""
     ref = inv.get("ref", "")
-    schema_path = contract_root / ref
+    try:
+        schema_path = _resolve_invariant_path(contract_root, ref)
+    except ValueError as exc:
+        return InvariantResult(
+            invariant_type="schema",
+            description="",
+            passed=False,
+            detail=str(exc),
+        )
 
     if not schema_path.exists():
         return InvariantResult(
@@ -173,7 +189,15 @@ def _check_contains(inv: dict, output: Any) -> InvariantResult:
 def _check_custom(contract_root: Path, inv: dict, output: Any) -> InvariantResult:
     """Run a custom validation script."""
     script = inv.get("script", "")
-    script_path = contract_root / script
+    try:
+        script_path = _resolve_invariant_path(contract_root, script)
+    except ValueError as exc:
+        return InvariantResult(
+            invariant_type="custom",
+            description="",
+            passed=False,
+            detail=str(exc),
+        )
 
     if not script_path.exists():
         return InvariantResult(

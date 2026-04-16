@@ -96,3 +96,41 @@ def test_validate_custom_script(contract_dir: Path, tmp_path: Path):
     # Should fail
     result = validate_output(contract_dir, {"label": "positive", "confidence": 1.5})
     assert not result.passed
+
+
+def test_custom_script_path_traversal(contract_dir: Path):
+    """Custom script paths that escape the contract root should fail, not execute."""
+    import yaml
+
+    invariants = [
+        {
+            "type": "custom",
+            "script": "../../etc/malicious.py",
+            "description": "Should be rejected",
+        },
+    ]
+    with open(contract_dir / "invariants.yaml", "w") as f:
+        yaml.dump(invariants, f)
+
+    result = validate_output(contract_dir, {"label": "positive", "confidence": 0.5})
+    assert not result.passed
+    assert "escapes contract root" in result.results[0].detail
+
+
+def test_schema_ref_path_traversal(contract_dir: Path):
+    """Schema ref paths that escape the contract root should fail."""
+    import yaml
+
+    invariants = [
+        {
+            "type": "schema",
+            "ref": "../../../etc/shadow",
+            "description": "Should be rejected",
+        },
+    ]
+    with open(contract_dir / "invariants.yaml", "w") as f:
+        yaml.dump(invariants, f)
+
+    result = validate_output(contract_dir, {"label": "positive", "confidence": 0.5})
+    assert not result.passed
+    assert "escapes contract root" in result.results[0].detail
