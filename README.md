@@ -130,20 +130,26 @@ Not a fit:
 
 ## Install
 
+**Claude Code plugin** (works standalone or alongside the Python lib):
+
+```bash
+claude plugin add github:kevintelford/holdfast
+```
+
+**Python library** (for pipeline instrumentation — install the plugin too for interactive review):
+
 ```bash
 pip install holdfast
 ```
 
-Install the Claude Code skill for interactive evolution:
+The plugin gives you four skills:
 
-```bash
-# Via plugin (recommended)
-/plugin add kevintelford/holdfast
-
-# Or manually
-mkdir -p ~/.claude/skills/holdfast
-cp skills/holdfast/SKILL.md ~/.claude/skills/holdfast/SKILL.md
-```
+| Skill | What it does | Claude mode | Pipeline mode |
+|---|---|---|---|
+| `/holdfast:track` | Set up contracts, log evidence | Sets up + writes evidence | Sets up contracts ([Python lib writes evidence](#quick-start--python-api)) |
+| `/holdfast:review` | Read evidence, run detection, explain patterns | Both | Both |
+| `/holdfast:evolve` | Propose and apply bounded improvements | Both | Both |
+| `/holdfast:status` | Quick summary across all contracts | Both | Both |
 
 ## Quick start — Claude Code
 
@@ -179,7 +185,7 @@ The Python API handles contract setup, evidence logging, and can drive evolution
 
 ### 1. Create a contract
 
-By convention, contracts live under `holdfast/contracts/` in your project root:
+Use `/holdfast:track` to set up a contract conversationally, or create one manually. By convention, contracts live under `holdfast/contracts/` in your project root:
 
 ```
 holdfast/

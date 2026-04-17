@@ -1,0 +1,10 @@
+{
+  "name": "holdfast",
+  "description": "Governed evolution for LLM and agentic systems. Track quality, detect drift, evolve prompts and approaches with evidence.",
+  "version": "0.5.0",
+  "author": {
+    "name": "Kevin Telford"
+  },
+  "repository": "https://github.com/kevintelford/holdfast",
+  "license": "MIT"
+}

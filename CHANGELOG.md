@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.0 — 2026-04-17
+
+### Claude Code plugin with four focused skills
+
+Holdfast is now a proper Claude Code plugin. The monolithic skill is replaced by four focused skills:
+
+- `/holdfast:track` — set up contracts and log evidence (discovery mode included)
+- `/holdfast:review` — read evidence, run detection, explain patterns
+- `/holdfast:evolve` — propose and apply bounded improvements
+- `/holdfast:status` — quick summary across all contracts
+
+All four skills work in both pipeline and Claude-only modes.
+
+Install: `claude plugin add github:kevintelford/holdfast`
+
+### Updated install flow
+
+Plugin is now the primary install path. Python library is secondary, for pipeline instrumentation. README updated to reflect both paths with a skill/mode compatibility table.
+
 ## v0.4.0 — 2026-04-17
 
 ### Claude-only mode — no Python required
