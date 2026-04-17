@@ -133,7 +133,17 @@ Not a fit:
 **Claude Code plugin** (works standalone or alongside the Python lib):
 
 ```bash
-claude plugin add github:kevintelford/holdfast
+# Add the marketplace (from your terminal or within Claude Code)
+claude plugin marketplace add kevintelford/holdfast
+
+# Install the plugin
+claude plugin install holdfast@holdfast
+```
+
+Or from within a Claude Code session:
+```
+/plugin marketplace add kevintelford/holdfast
+/plugin install holdfast@holdfast
 ```
 
 **Python library** (for pipeline instrumentation — install the plugin too for interactive review):

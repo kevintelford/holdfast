@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.1 — 2026-04-17
+
+### Marketplace support and corrected install instructions
+
+Added `marketplace.json` so the repo works as a Claude Code marketplace. Fixed install commands in README — the previous `claude plugin add github:` syntax doesn't exist.
+
+Install:
+```
+/plugin marketplace add kevintelford/holdfast
+/plugin install holdfast@holdfast
+```
+
 ## v0.5.0 — 2026-04-17
 
 ### Claude Code plugin with four focused skills

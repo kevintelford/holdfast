@@ -1,0 +1,20 @@
+{
+  "name": "holdfast",
+  "owner": {
+    "name": "Kevin Telford"
+  },
+  "metadata": {
+    "description": "Governed evolution for LLM and agentic systems"
+  },
+  "plugins": [
+    {
+      "name": "holdfast",
+      "source": "./",
+      "description": "Track quality, detect drift, evolve prompts and approaches with evidence. Four skills: track, review, evolve, status.",
+      "version": "0.5.1",
+      "license": "MIT",
+      "keywords": ["llm", "drift", "evolution", "prompts", "governance"],
+      "category": "quality"
+    }
+  ]
+}
