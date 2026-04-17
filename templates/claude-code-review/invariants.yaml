@@ -1,0 +1,4 @@
+- type: contains
+  field: outcome
+  values: ["accepted", "modified", "rejected"]
+  description: "Outcome must be a tracked state"

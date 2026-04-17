@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.0 — 2026-04-17
+
+### Claude-only mode — no Python required
+
+Holdfast now works entirely within Claude Code. Install the skill and say "use holdfast to track my code reviews" — Claude sets up the contract, logs evidence silently after each tracked interaction, runs detection, and proposes improvements. No Python library needed.
+
+- **Discovery mode**: The skill passively notices repeatable tasks (code review, test generation, planning, refactoring, security auditing) and offers to track them. One nudge per task type per session, zero friction if ignored.
+- **Evidence writing**: Claude logs evidence after each tracked interaction with outcome (accepted/modified/rejected), satisfaction score (1-5), and feedback summary. Silent by default, configurable with `holdfast_verbose: true`.
+- **In-context detection**: Claude reads evidence files and computes failure rate, variance, and drift without Python. Shows its work.
+- **Contract setup**: Two questions — what are you tracking, what does good look like — then Claude creates the full contract structure.
+
+### Contract templates
+
+Starter templates for common Claude-only use cases:
+- `templates/claude-code-review/` — code review quality tracking
+- `templates/claude-test-generation/` — test generation quality tracking
+
+### Contract mode field
+
+New `mode` field in contract.yaml: `"pipeline"` (default) or `"claude"`. The skill uses this to determine whether to write evidence itself or defer to the Python library.
+
 ## v0.3.0 — 2026-04-15
 
 ### Run ID limit fix

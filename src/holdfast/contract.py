@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 
 VALID_EVOLUTION_MODES = ("monitor", "semi-auto", "auto")
+VALID_MODES = ("pipeline", "claude")
 
 
 def _validate_contract_data(data: Any, config_path: Path) -> None:
@@ -91,6 +92,7 @@ class Contract:
     evolvable: dict[str, EvolvableRef] = field(default_factory=dict)
     interface_notes: str = ""
     evolution_mode: str = "monitor"
+    mode: str = "pipeline"
     project_root: Path | None = None
 
     @classmethod
@@ -115,6 +117,10 @@ class Contract:
         if evolution_mode not in VALID_EVOLUTION_MODES:
             raise ValueError(f"Invalid evolution_mode '{evolution_mode}'. Must be one of: {VALID_EVOLUTION_MODES}")
 
+        mode = data.get("mode", "pipeline")
+        if mode not in VALID_MODES:
+            raise ValueError(f"Invalid mode '{mode}'. Must be one of: {VALID_MODES}")
+
         evolvable_raw = data.get("evolvable", {})
         evolvable_refs = {k: EvolvableRef.from_yaml(v) for k, v in evolvable_raw.items()}
 
@@ -136,6 +142,7 @@ class Contract:
             evolvable=evolvable_refs,
             interface_notes=interface_notes,
             evolution_mode=evolution_mode,
+            mode=mode,
             project_root=project_root,
         )
 
@@ -226,6 +233,7 @@ class Contract:
         data: dict[str, Any] = {
             "name": self.name,
             "version": self.version,
+            "mode": self.mode,
             "evolution_mode": self.evolution_mode,
             "frozen": {**self.frozen},
             "evolvable": {k: ref.to_yaml() for k, ref in self.evolvable.items()},

@@ -1,0 +1,10 @@
+name: code-reviews
+version: 1
+mode: claude
+evolution_mode: semi-auto
+
+frozen:
+  standards: "frozen/standards.md"
+
+evolvable:
+  approach: "evolvable/approach.md"

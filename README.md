@@ -8,23 +8,30 @@
 
 The destination is fixed. The route gets better.
 
-Holdfast separates what your downstream systems depend on (frozen) from how you deliver it (evolvable), then uses evidence from real runs to improve the route while guaranteeing the destination doesn't change. Built for teams running LLM pipelines, agentic workflows, and prompt-driven systems that need to improve without breaking contracts.
+Holdfast separates what your downstream systems depend on (frozen) from how you deliver it (evolvable), then uses evidence to improve the route while guaranteeing the destination doesn't change. Built for teams running LLM pipelines, agentic workflows, and prompt-driven systems that need to improve without regressing.
 
 ## Built for Claude Code & Python pipelines
 
-### Claude Code
+### Claude Code — no Python required
 
-Use Claude Code the way you already do — build pipelines, iterate on prompts, run agents. Holdfast sits underneath, collecting evidence from real runs and detecting when things drift.
+Install the holdfast skill and it works out of the box. No Python library needed.
 
-When something needs attention, Claude interprets the accumulated evidence, explains what's happening and why, and proposes a bounded change. You approve before anything changes.
+Use Claude Code the way you already do — code reviews, test generation, refactoring, planning. Holdfast tracks your interactions, detects when quality drifts, and proposes improvements to Claude's own approach.
 
-- **Build** — write your pipeline, prompts, and agents with Claude Code as usual
-- **Interpret** — ask Claude to read your evidence, spot failure patterns, explain what's drifting across runs
-- **Evolve** — Claude proposes a targeted fix backed by specific run evidence, you approve, the prompt evolves
+- **Discover** — holdfast notices repeatable tasks and offers to track them
+- **Track** — after each tracked interaction, holdfast silently logs evidence (outcome, quality, what worked)
+- **Interpret** — ask Claude what's drifting and it reads the accumulated evidence, runs detection, explains patterns
+- **Evolve** — Claude proposes a targeted change to its own approach, you approve, the approach improves
 
-**Before:** Your classifier prompt doesn't handle sarcasm. 5 of the last 20 runs fail on ambiguous tone — but you don't know that until something breaks downstream.
+Tell Claude to start tracking:
+> "Use holdfast to track my code reviews."
 
-**After:** Holdfast detects the pattern. Claude explains the cluster of failures, proposes adding a single instruction for ambiguous inputs, you approve, and the prompt evolves. The frozen output schema is never touched.
+Or add it to your CLAUDE.md:
+```
+Use holdfast to track the quality of code reviews in this project.
+```
+
+Claude sets up the contract, starts logging evidence silently, and surfaces insights when patterns emerge.
 
 ### Python pipelines
 
@@ -48,38 +55,78 @@ For CI or fully automated pipelines, `propose_evolution()` drives evolution prog
 
 ## What it looks like
 
-A typical Claude Code session with holdfast:
+A typical Claude Code session reviewing evidence across contracts:
 
 ```
-You: Anything drifting in my classifier contract?
+You: How's my classifier doing?
 
-Claude: Looking at 47 runs across the last week.
+Claude: Here's what the holdfast evidence shows:
 
-  3 alerts:
-  - score variance on 'confidence' field (stddev=0.89, threshold 0.5)
-  - failure rate 37% in last 10 runs (threshold 20%)
-  - 5 of 8 failures are missing confidence on ambiguous inputs (sarcasm, irony)
+  Classifier — English (847 runs)
 
-  The failures cluster around tone-ambiguous inputs where the model
-  skips the confidence field entirely. The prompt doesn't mention
-  how to handle ambiguous cases.
+  Drift alert (triggered): Mean confidence shifted from baseline 0.82 → 0.71
+  (shift 0.11, threshold 0.10). Confidence is trending lower — the model is
+  less certain on recent inputs. Could be input distribution shift or the
+  prompt change from last week.
 
-You: Propose an evolution.
+  Pass rate: Baseline (first 50) = 88% → Recent (last 50) = 94%. Accuracy
+  improved despite lower confidence — the model is better calibrated now.
 
-Claude: Based on runs 005, 006, 008, 012, 014 — all failures on ambiguous tone:
+  1 volatile input category: product reviews with mixed sentiment (stdev 0.31,
+  scores [0.9, 0.4, 0.6]). The rest are stable within ±0.1.
+
+  Classifier — Spanish (312 runs)
+
+  No alerts. Consistent output across all detection windows.
+
+  Summarizer — Short Form (1,203 runs)
+
+  Failure rate alert: 23% in last 50 runs (threshold 15%). Failures are all
+  schema violations — summaries exceeding the 280-char limit. The model is
+  producing longer outputs since the prompt was last evolved.
+
+  Bottom line
+
+  The classifier drift is minor — watch it over the next run cycle. The
+  summarizer needs attention: the char limit failures are climbing.
+
+You: Propose an evolution for the summarizer.
+
+Claude: Based on runs 01180, 01187, 01192, 01195, 01201 — all over the char limit:
 
   Proposed change to evolvable/prompt.md:
-  + For ambiguous inputs (sarcasm, irony, mixed signals), always include
-  + a confidence score. Use lower confidence (0.3-0.5) but never omit the field.
+  + Your summary MUST be under 280 characters. Count carefully.
+  + If the input is complex, prioritize the key finding over completeness.
 
-  This preserves the frozen output schema (label + confidence required)
-  and targets the specific failure pattern. Want me to apply it?
+  This preserves the frozen output schema and targets the specific failure
+  pattern. Want me to apply it?
 
 You: Yes.
 
-Claude: Applied evolution evo-001 (v1 → v2). Previous version snapshotted —
-  rollback to v1 anytime with rollback(contract, to_version=1).
+Claude: Applied evolution evo-00003 (v2 → v3). Previous version snapshotted —
+  rollback to v2 anytime.
 ```
+
+## When to use holdfast
+
+Holdfast fits any repeatable LLM or agent task that needs to **improve over time without regressing** — whether the output feeds downstream systems or is the end product itself.
+
+**Claude Code tasks** (no Python needed):
+- **Code reviews** — track whether reviews catch real bugs, flag false positives, miss security issues
+- **Test generation** — track whether tests cover edge cases, catch real bugs, run without modification
+- **Planning and refactoring** — track whether plans lead to successful implementations, whether refactors break things
+- **Documentation and auditing** — track consistency and completeness over time
+
+**Python pipelines:**
+- **Classification pipelines** — sentiment, intent, severity. Structured output, clear schema, evidence accumulates fast.
+- **Extraction and summarization** — pulling structured data from documents. Quality drifts as input distribution changes.
+- **Evaluation and scoring** — rubric-based assessment, quality scoring. Numeric outputs where variance and drift matter.
+- **RAG pipelines** — retrieval + generation. Output quality shifts as the corpus changes.
+- **Multi-model routing** — switching between providers or models. Holdfast detects when one performs differently.
+
+Not a fit:
+- One-shot creative tasks with no repeatable structure
+- Tasks where there's no definition of "good" to track against
 
 ## Install
 
@@ -100,7 +147,17 @@ cp skills/holdfast/SKILL.md ~/.claude/skills/holdfast/SKILL.md
 
 ## Quick start — Claude Code
 
-Once you have a contract set up (see [Python API quick start](#quick-start--python-api) for setup), everything is conversational:
+**Option A: Let Claude set it up.** Just say "use holdfast to track my code reviews" and Claude creates the contract for you.
+
+**Option B: Use a template.** Copy a starter template from `templates/`:
+
+```bash
+cp -r templates/claude-code-review holdfast/contracts/code-reviews
+```
+
+**Option C: Set up a Python pipeline contract.** See [Python API quick start](#quick-start--python-api).
+
+Once you have a contract, everything is conversational:
 
 **Check for patterns:**
 > "What patterns do you see in my classifier contract?"
@@ -254,9 +311,9 @@ evolvable:
     path: "src/pipeline/prompts.py"
     symbol: "SYSTEM_PROMPT"              # module-level assignment
 
-  maturity_prompt:
+  summary_prompt:
     path: "src/pipeline/prompts.py"
-    symbol: "CyberPrompts.MATURITY_PROMPT"  # class attribute
+    symbol: "Prompts.SUMMARY_PROMPT"        # class attribute
 ```
 
 Supports:

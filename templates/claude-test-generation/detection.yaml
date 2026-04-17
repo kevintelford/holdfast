@@ -1,0 +1,17 @@
+- type: failure_rate
+  max_rate: 0.20
+  window: 15
+  description: "User rejection rate above 20%"
+
+- type: drift
+  field: satisfaction
+  baseline_window: 10
+  recent_window: 10
+  max_shift: 1.0
+  description: "Test quality satisfaction shifted"
+
+- type: variance
+  field: satisfaction
+  max_stddev: 1.5
+  window: 15
+  description: "Test quality inconsistent"
